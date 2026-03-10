@@ -1,27 +1,33 @@
 {
     "manifest_version": 3,
     "name": "Bulk Email Sender",
-    "version": "1.0.0",
-    "description": "Send personalized bulk emails using CSV or Excel contact lists.",
+    "version": "1.0.1",
+    "description": "Send personalized bulk emails with automated Gmail Sending.",
     "action": {
         "default_popup": "index.html",
-        "default_title": "Bulk Email Sender",
-        "default_icon": {
-            "16": "icon.png",
-            "32": "icon.png",
-            "48": "icon.png",
-            "128": "icon.png"
-        }
+        "default_title": "Bulk Email Sender"
     },
     "icons": {
-        "16": "icon.png",
-        "32": "icon.png",
-        "48": "icon.png",
         "128": "icon.png"
+    },
+    "background": {
+        "service_worker": "background.js"
     },
     "permissions": [
         "storage",
-        "unlimitedStorage"
+        "unlimitedStorage",
+        "tabs"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://mail.google.com/mail/*"
+            ],
+            "js": [
+                "gmail-autoclick.js"
+            ],
+            "run_at": "document_idle"
+        }
     ],
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'"

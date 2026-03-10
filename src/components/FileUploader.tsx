@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { Upload, FileType, AlertCircle } from 'lucide-react'
+import { Upload, AlertCircle } from 'lucide-react'
 import { cn } from '../utils/cn'
 
 interface FileUploaderProps {

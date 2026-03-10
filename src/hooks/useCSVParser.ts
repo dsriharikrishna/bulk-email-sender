@@ -2,9 +2,13 @@ import { useState, useCallback } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { Contact, contactSchema } from '../types/contact'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { setContacts } from '../store/campaignSlice'
 
 export const useCSVParser = () => {
-    const [data, setData] = useState<Contact[]>([])
+    const dispatch = useAppDispatch()
+    const data = useAppSelector(state => state.campaign.contacts)
+    
     const [error, setError] = useState<string | null>(null)
     const [isParsing, setIsParsing] = useState(false)
 
@@ -12,7 +16,6 @@ export const useCSVParser = () => {
         setIsParsing(true)
         setError(null)
 
-        // console.log(`Sending to ${queue[currentIndex].name}`)
         const extension = file.name.split('.').pop()?.toLowerCase()
 
         if (extension === 'csv') {
@@ -53,7 +56,7 @@ export const useCSVParser = () => {
             setError('Unsupported file format. Please upload .csv or .xlsx')
             setIsParsing(false)
         }
-    }, [])
+    }, [dispatch])
 
     const processParsedData = (rawItems: any[]) => {
         const formattedData: Contact[] = rawItems.map((item, index) => {
@@ -79,13 +82,14 @@ export const useCSVParser = () => {
             return validation.data as Contact
         })
 
-        setData(formattedData)
+        dispatch(setContacts(formattedData))
     }
 
     const clearData = () => {
-        setData([])
+        dispatch(setContacts([]))
         setError(null)
     }
 
     return { data, error, isParsing, parseFile, clearData }
 }
+

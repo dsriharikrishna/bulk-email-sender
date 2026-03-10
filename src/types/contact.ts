@@ -6,7 +6,7 @@ export const contactSchema = z.object({
     email: z.string().email('Invalid email address'),
     company: z.string().min(1, 'Company is required'),
     title: z.string().optional(),
-    status: z.enum(['Pending', 'Sending', 'Sent', 'Failed']).default('Pending'),
+    status: z.enum(['Pending', 'Sending', 'Sent', 'Failed']),
     sentTime: z.string().optional(),
     error: z.string().optional(),
 })
@@ -16,15 +16,7 @@ export type Contact = z.infer<typeof contactSchema>
 export type EmailTemplate = {
     subject: string
     body: string
-}
-
-export type Attachment = {
-    name: string
-    file: File
-    type: 'Resume' | 'Cover Letter'
-}
-
-export type SendingOptions = {
-    delay: number // in seconds
-    sendToAll: boolean
+    sendingMethod: 'gmail' | 'mailto'
+    resumeUrl?: string
+    portfolioUrl?: string
 }

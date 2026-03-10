@@ -1,54 +1,84 @@
-import { useState, useMemo } from 'react'
-import { Upload, Mail, Send, History, BarChart3, Settings, AlertCircle } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Upload, Mail, Send, History, BarChart3, AlertCircle } from 'lucide-react'
 import { FileUploader } from './components/FileUploader'
 import { ContactPreviewTable } from './components/ContactPreviewTable'
 import { EmailTemplateEditor } from './components/EmailTemplateEditor'
-import { AttachmentUploader } from './components/AttachmentUploader'
 import { SendController } from './components/SendController'
 import { EmailStatusTable } from './components/EmailStatusTable'
 import { useCSVParser } from './hooks/useCSVParser'
 import { useBulkSender } from './hooks/useBulkSender'
-import { EmailTemplate, Attachment } from './types/contact'
 import { cn } from './utils/cn'
+import { useAppDispatch, useAppSelector } from './store/hooks'
+import { setTemplate, setDelay, clearCampaignState } from './store/campaignSlice'
 
 type Page = 'dashboard' | 'upload' | 'compose' | 'send' | 'logs'
 
-export default function App() {
-    const [currentPage, setCurrentPage] = useState<Page>('dashboard')
-    const [template, setTemplate] = useState<EmailTemplate>({
-        subject: '',
-        body: ''
-    })
-    const [attachments, setAttachments] = useState<Attachment[]>([])
-    const [delay, setDelay] = useState(1)
+declare const chrome: any;
 
-    const { data: contacts, error: parseError, isParsing, parseFile, clearData } = useCSVParser()
+export default function App() {
+    const dispatch = useAppDispatch()
+    const { contacts, queue, isSending, isPaused, currentIndex, template, delay } = useAppSelector(state => state.campaign)
+
+    const [currentPage, setCurrentPage] = useState<Page>('dashboard')
+    const [isLoaded, setIsLoaded] = useState(false)
+
+    // Load all state from chrome.storage on mount
+    useEffect(() => {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['bm_page', 'bm_template', 'bm_delay', 'bm_contacts'], (result: any) => {
+                if (result.bm_page) setCurrentPage(result.bm_page)
+                if (result.bm_template) dispatch(setTemplate(result.bm_template))
+                if (result.bm_delay) dispatch(setDelay(result.bm_delay))
+                setIsLoaded(true)
+            })
+        } else {
+            setIsLoaded(true)
+        }
+    }, [dispatch])
+
+    // Persist all state to chrome.storage
+    useEffect(() => {
+        if (!isLoaded) return;
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({
+                bm_page: currentPage,
+                bm_template: template,
+                bm_delay: delay,
+                bm_contacts: contacts /* useCSVParser used to do this, doing it here centrally */
+            })
+        }
+    }, [currentPage, template, delay, contacts, isLoaded])
+
+    const { error: parseError, isParsing, parseFile, clearData } = useCSVParser()
+
     const {
-        queue,
-        isSending,
-        isPaused,
-        currentIndex,
         startSending,
         pauseSending,
         resumeSending,
         stopSending,
-        resetQueue
-    } = useBulkSender(contacts, delay)
-
-    const handleAddAttachment = (file: File, type: 'Resume' | 'Cover Letter') => {
-        setAttachments(prev => [...prev.filter(a => a.type !== type), { name: file.name, file, type }])
-    }
-
-    const handleRemoveAttachment = (name: string) => {
-        setAttachments(prev => prev.filter(a => a.name !== name))
-    }
+        resetQueue,
+        sendOne
+    } = useBulkSender()
 
     const canStart = useMemo(() => {
         return template.subject.length > 0 &&
             template.body.length > 0 &&
-            attachments.some(a => a.type === 'Resume') &&
             contacts.length > 0
-    }, [template, attachments, contacts])
+    }, [template, contacts])
+
+    const handleClearAll = () => {
+        if (window.confirm('Are you sure you want to clear all data? This will reset your contacts, template, and progress.')) {
+            setCurrentPage('dashboard')
+            clearData()
+            dispatch(clearCampaignState())
+
+            // Clear storage
+            localStorage.clear()
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.clear()
+            }
+        }
+    }
 
     const stats = useMemo(() => ({
         total: queue.length,
@@ -75,14 +105,22 @@ export default function App() {
                     </div>
                     <span className="font-black text-sm tracking-tight text-slate-800 italic uppercase">Bulk<span className="text-primary-600">Mail</span></span>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        isSending ? (isPaused ? "bg-amber-500" : "bg-green-500 animate-pulse") : "bg-slate-300"
-                    )} />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                        {isSending ? (isPaused ? "Paused" : "Running") : "Idle"}
-                    </span>
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handleClearAll}
+                        className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest leading-none border border-slate-200 hover:border-red-200 px-2 py-1 rounded-md"
+                    >
+                        Clear All
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            isSending ? (isPaused ? "bg-amber-500" : "bg-green-500 animate-pulse") : "bg-slate-300"
+                        )} />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                            {isSending ? (isPaused ? "Paused" : "Running") : "Idle"}
+                        </span>
+                    </div>
                 </div>
             </header>
 
@@ -140,7 +178,7 @@ export default function App() {
                                 <div className="animate-in fade-in zoom-in-95 duration-300">
                                     <ContactPreviewTable contacts={contacts} />
                                     <div className="flex justify-between items-center mt-4">
-                                        <button onClick={clearData} className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider">
+                                        <button onClick={() => { clearData(); resetQueue(); }} className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-wider">
                                             Clear All
                                         </button>
                                         <button onClick={() => setCurrentPage('compose')} className="bg-primary-600 text-white px-5 py-2 rounded-xl font-bold text-xs shadow-lg shadow-primary-50 hover:bg-primary-700 transition-all active:scale-95">
@@ -156,12 +194,7 @@ export default function App() {
                         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
                             <EmailTemplateEditor
                                 template={template}
-                                onChange={setTemplate}
-                            />
-                            <AttachmentUploader
-                                attachments={attachments}
-                                onAdd={handleAddAttachment}
-                                onRemove={handleRemoveAttachment}
+                                onChange={(t) => dispatch(setTemplate(t))}
                             />
                             <div className="p-4 bg-white border border-slate-100 rounded-xl shadow-sm">
                                 <div className="flex justify-between items-center mb-2">
@@ -174,7 +207,7 @@ export default function App() {
                                     max="10"
                                     step="1"
                                     value={delay}
-                                    onChange={(e) => setDelay(parseInt(e.target.value))}
+                                    onChange={(e) => dispatch(setDelay(parseInt(e.target.value)))}
                                     className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary-600"
                                 />
                             </div>
@@ -204,14 +237,14 @@ export default function App() {
                                 canStart={canStart}
                             />
 
-                            <EmailStatusTable contacts={queue} />
+                            <EmailStatusTable contacts={queue} onCompose={sendOne} />
 
                             {!canStart && (
                                 <div className="p-4 bg-amber-50 border border-amber-100/50 rounded-xl flex items-start gap-3">
                                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                                     <div>
                                         <h4 className="text-[10px] font-black text-amber-800 uppercase tracking-wider">Incomplete</h4>
-                                        <p className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">Contacts, template, and resume are required.</p>
+                                        <p className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">Contacts and template are required.</p>
                                         <button
                                             onClick={() => setCurrentPage('compose')}
                                             className="text-[9px] font-black uppercase text-amber-900 mt-2 flex items-center gap-1 group"
@@ -230,7 +263,10 @@ export default function App() {
                                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">Campaign History</h3>
                                 <div className="text-[8px] font-bold text-slate-400 uppercase">{queue.filter(c => c.status !== 'Pending').length} Entries</div>
                             </div>
-                            <EmailStatusTable contacts={queue.filter(c => c.status !== 'Pending')} />
+                            <EmailStatusTable 
+                                contacts={queue.filter(c => c.status !== 'Pending')} 
+                                onCompose={sendOne}
+                            />
                         </div>
                     )}
 
